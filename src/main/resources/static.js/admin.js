@@ -1,130 +1,119 @@
-document.addEventListener("DOMContentLoaded", () => {
-    const quickCreateForm = document.getElementById("quickCreateForm");
-    const userTableBody = document.querySelector("#userTable tbody");
-    const messageContainer = document.getElementById("messageContainer");
+window.openEditModal = (id, username, email, age, rolesJson) => {
+    const roles = JSON.parse(rolesJson);
 
-    // Получаем CSRF токен из meta-тегов (Thymeleaf)
-    const csrfToken = document.querySelector('meta[name="_csrf"]').content;
-    const csrfHeader = document.querySelector('meta[name="_csrf_header"]').content;
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-username').value = username;
+    document.getElementById('edit-email').value = email;
+    document.getElementById('edit-age').value = age;
+    document.getElementById('edit-password').value = '';
 
-    // -----------------------------
-    // Загрузка всех пользователей
-    // -----------------------------
-    function loadUsers() {
-        fetch("/api/admin/users", {
-            headers: {
-                [csrfHeader]: csrfToken
-            }
-        })
-            .then(res => res.json())
-            .then(users => {
-                userTableBody.innerHTML = "";
-                users.forEach(user => {
-                    const tr = document.createElement("tr");
-                    tr.innerHTML = `
-                        <td>${user.id}</td>
-                        <td>${user.username}</td>
-                        <td>${user.email}</td>
-                        <td>${user.roles.map(r => r.replace("ROLE_", "")).join(", ")}</td>
-                        <td>
-                            <div class="btn-group" role="group">
-                                <button class="btn btn-outline-primary btn-sm" onclick="editUser(${user.id})">
-                                    <i class="bi bi-pencil"></i> Изменить
-                                </button>
-                                <button class="btn btn-outline-info btn-sm" onclick="viewUser(${user.id})">
-                                    <i class="bi bi-eye"></i> Обзор
-                                </button>
-                                <button class="btn btn-outline-danger btn-sm" onclick="deleteUser(${user.id})">
-                                    <i class="bi bi-trash"></i> Удалить
-                                </button>
-                            </div>
-                        </td>
-                    `;
-                    userTableBody.appendChild(tr);
-                });
-            })
-            .catch(err => showMessage("Ошибка загрузки пользователей", "danger"));
-    }
-
-    loadUsers();
-
-    // -----------------------------
-    // Создание нового пользователя
-    // -----------------------------
-    quickCreateForm.addEventListener("submit", e => {
-        e.preventDefault();
-        const formData = new FormData(quickCreateForm);
-        const user = {
-            username: formData.get("username"),
-            email: formData.get("email"),
-            password: formData.get("password")
-        };
-
-        fetch("/api/admin/users", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                [csrfHeader]: csrfToken
-            },
-            body: JSON.stringify(user)
-        })
-            .then(res => {
-                if (!res.ok) throw new Error("Ошибка создания пользователя");
-                return res.json();
-            })
-            .then(data => {
-                quickCreateForm.reset();
-                loadUsers();
-                showMessage("Пользователь создан успешно!", "success");
-            })
-            .catch(err => showMessage(err.message, "danger"));
+    const select = document.getElementById('edit-roles');
+    Array.from(select.options).forEach(opt => {
+        opt.selected = roles.includes(opt.value);
     });
 
-    // -----------------------------
-    // Удаление пользователя
-    // -----------------------------
-    window.deleteUser = function(id) {
-        if (!confirm("Вы уверены, что хотите удалить пользователя?")) return;
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
 
-        fetch(`/api/admin/users/${id}`, {
-            method: "DELETE",
-            headers: {
-                [csrfHeader]: csrfToken
-            }
-        })
-            .then(res => {
-                if (!res.ok) throw new Error("Ошибка удаления пользователя");
-                loadUsers();
-                showMessage("Пользователь удалён", "success");
-            })
-            .catch(err => showMessage(err.message, "danger"));
+/* ====== SAVE EDIT ====== */
+document.getElementById('edit-user-form').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const id = document.getElementById('edit-id').value;
+
+    const body = {
+        username: document.getElementById('edit-username').value,
+        email: document.getElementById('edit-email').value,
+        age: Number(document.getElementById('edit-age').value),
+        password: document.getElementById('edit-password').value,
+        roles: Array.from(document.getElementById('edit-roles').selectedOptions).map(o => o.value)
     };
 
-    // -----------------------------
-    // Редактирование пользователя (заглушка)
-    // -----------------------------
-    window.editUser = function(id) {
-        alert(`Редактирование пользователя ${id} пока не реализовано`);
-    };
+    const res = await fetch(`${apiAdmin}/users/${id}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            [csrfHeader]: csrfToken
+        },
+        body: JSON.stringify(body)
+    });
 
-    // -----------------------------
-    // Просмотр пользователя (заглушка)
-    // -----------------------------
-    window.viewUser = function(id) {
-        alert(`Просмотр пользователя ${id} пока не реализовано`);
-    };
-
-    // -----------------------------
-    // Показ сообщений
-    // -----------------------------
-    function showMessage(msg, type) {
-        const alertDiv = document.createElement("div");
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        alertDiv.innerHTML = `
-            ${msg}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        messageContainer.appendChild(alertDiv);
-        setTimeout(() => alertDiv.remove(), 5000);
+    if (!res.ok) {
+        showAlert(await res.text());
+        return;
     }
+
+    await loadUsers();
+    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+    showAlert("User updated successfully!", "success");
+});
+
+/* ====== OPEN DELETE MODAL ====== */
+window.openDeleteModal = (id, username, email) => {
+    document.getElementById('delete-id').value = id;
+    document.getElementById('delete-id-show').innerText = id;
+    document.getElementById('delete-username').innerText = username;
+    document.getElementById('delete-email').innerText = email;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+/* ====== DELETE USER ====== */
+document.getElementById('delete-user-form').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const id = document.getElementById('delete-id').value;
+
+    const res = await fetch(`${apiAdmin}/users/${id}`, {
+        method: 'DELETE',
+        headers: {
+            [csrfHeader]: csrfToken
+        }
+    });
+
+    if (!res.ok) {
+        showAlert(await res.text());
+        return;
+    }
+
+    await loadUsers();
+    bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+    showAlert("User deleted successfully!", "success");
+});
+
+/* ====== ADD NEW USER ====== */
+document.getElementById('new-user-form').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const body = {
+        username: e.target.username.value,
+        email: e.target.email.value,
+        age: Number(e.target.age.value),
+        password: e.target.password.value,
+        roles: Array.from(document.getElementById('new-user-roles').selectedOptions).map(o => o.value)
+    };
+
+    const res = await fetch(apiAdmin + '/users', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            [csrfHeader]: csrfToken
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+        showAlert(await res.text());
+        return;
+    }
+
+    await loadUsers();
+    e.target.reset();
+    showAlert("User created successfully!", "success");
+});
+
+/* ====== INIT ====== */
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadCurrentUser();
+    await loadRoles();
+    await loadUsers();
 });

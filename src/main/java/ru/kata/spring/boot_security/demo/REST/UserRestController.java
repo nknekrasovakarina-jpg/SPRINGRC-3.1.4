@@ -1,11 +1,13 @@
 package ru.kata.spring.boot_security.demo.REST;
 
 import org.springframework.web.bind.annotation.*;
+import ru.kata.spring.boot_security.demo.MODEL.Role;
 import ru.kata.spring.boot_security.demo.MODEL.User;
 import ru.kata.spring.boot_security.demo.SERVICE.UserService;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/user")
@@ -33,6 +35,14 @@ public class UserRestController {
     @GetMapping("/{id}")
     public User getUserById(@PathVariable Long id) {
         return userService.getUserById(id);
+    }
+
+    @GetMapping("/roles")
+    public List<String> getRoles() {
+        return userService.getAllRoles()
+                .stream()
+                .map(Role::getName)
+                .collect(Collectors.toList());
     }
 
 }

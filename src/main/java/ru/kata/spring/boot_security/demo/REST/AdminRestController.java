@@ -1,15 +1,14 @@
 package ru.kata.spring.boot_security.demo.REST;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import ru.kata.spring.boot_security.demo.DTO.UserDTO;
 import ru.kata.spring.boot_security.demo.MODEL.Role;
 import ru.kata.spring.boot_security.demo.MODEL.User;
 import ru.kata.spring.boot_security.demo.SERVICE.UserService;
 
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
@@ -17,148 +16,97 @@ import java.util.stream.Collectors;
 public class AdminRestController {
 
     private final UserService userService;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordEncoder encoder;
 
-    public AdminRestController(UserService userService, PasswordEncoder passwordEncoder) {
+    public AdminRestController(UserService userService, PasswordEncoder encoder) {
         this.userService = userService;
-        this.passwordEncoder = passwordEncoder;
+        this.encoder = encoder;
     }
 
-    /** Получить всех пользователей */
     @GetMapping("/users")
-    public ResponseEntity<List<UserDTO>> getAllUsers() {
-        List<UserDTO> users = userService.getAllUsers().stream()
-                .map(UserDTO::new)
+    public List<UserDTO> getAll() {
+        return userService.getAllUsers().stream()
+                .map(this::toDTO)
                 .collect(Collectors.toList());
-        return ResponseEntity.ok(users);
     }
 
-    /** Получить пользователя по id */
     @GetMapping("/users/{id}")
-    public ResponseEntity<UserDTO> getUserById(@PathVariable Long id) {
-        User user = userService.getUserById(id);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-        }
-        return ResponseEntity.ok(new UserDTO(user));
+    public UserDTO getById(@PathVariable Long id) {
+        return toDTO(userService.getUserById(id));
     }
 
-    /** Создать нового пользователя */
     @PostMapping("/users")
-    public ResponseEntity<?> createUser(@RequestBody UserDTO userDTO) {
-        try {
-            // Проверка уникальности username/email
-            if (userService.existsByUsername(userDTO.username)) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Пользователь с таким username уже существует");
-            }
-            if (userService.existsByEmail(userDTO.email)) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Пользователь с таким email уже существует");
-            }
+    public UserDTO create(@RequestBody UserDTO dto) {
 
-            User user = userDTO.toUser();
-            if (userDTO.password != null && !userDTO.password.isEmpty()) {
-                user.setPassword(passwordEncoder.encode(userDTO.password));
-            } else {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Пароль обязателен для создания пользователя");
-            }
+        User user = fromDTO(dto);
 
-            User savedUser = userService.saveUser(user);
-            return ResponseEntity.ok(new UserDTO(savedUser));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Ошибка при создании пользователя: " + e.getMessage());
-        }
+        user.setPassword(encoder.encode(dto.getPassword()));
+
+        return toDTO(userService.saveUser(user));
     }
 
-    /** Обновить пользователя */
     @PutMapping("/users/{id}")
-    public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody UserDTO userDTO) {
-        try {
-            User existing = userService.getUserById(id);
-            if (existing == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Пользователь не найден");
-            }
+    public UserDTO update(@PathVariable Long id, @RequestBody UserDTO dto) {
 
-            // Проверка уникальности username/email при обновлении
-            if (!existing.getUsername().equals(userDTO.username) && userService.existsByUsername(userDTO.username)) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Username уже занят");
-            }
-            if (!existing.getEmail().equals(userDTO.email) && userService.existsByEmail(userDTO.email)) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email уже занят");
-            }
+        User user = fromDTO(dto);
 
-            User userToUpdate = userDTO.toUser();
-            userToUpdate.setId(id);
-
-            // Если пароль не пустой, обновляем его
-            if (userDTO.password != null && !userDTO.password.isEmpty()) {
-                userToUpdate.setPassword(passwordEncoder.encode(userDTO.password));
-            } else {
-                userToUpdate.setPassword(existing.getPassword());
-            }
-
-            User updatedUser = userService.updateUser(id, userToUpdate);
-            return ResponseEntity.ok(new UserDTO(updatedUser));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Ошибка при обновлении пользователя: " + e.getMessage());
-        }
+        return toDTO(userService.updateUser(id, user));
     }
 
-    /** Удалить пользователя */
     @DeleteMapping("/users/{id}")
-    public ResponseEntity<?> deleteUser(@PathVariable Long id) {
-        try {
-            User user = userService.getUserById(id);
-            if (user == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Пользователь не найден");
-            }
-            userService.deleteUser(id);
-            return ResponseEntity.ok("Пользователь удалён");
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Ошибка при удалении пользователя: " + e.getMessage());
-        }
+    public void delete(@PathVariable Long id) {
+        userService.deleteUser(id);
     }
 
-    /** DTO для безопасности и удобной работы с JSON */
-    public static class UserDTO {
-        public Long id;
-        public String username;
-        public String email;
-        public List<String> roles;
-        public String password;
-
-        public UserDTO() {}
-
-        public UserDTO(User user) {
-            this.id = user.getId();
-            this.username = user.getUsername();
-            this.email = user.getEmail();
-            this.roles = user.getRoles().stream()
-                    .map(Role::getName)
-                    .collect(Collectors.toList());
-        }
-
-        public User toUser() {
-            User user = new User();
-            user.setId(this.id);
-            user.setUsername(this.username);
-            user.setEmail(this.email);
-            user.setPassword(this.password);
-            if (this.roles != null) {
-                Set<Role> roleSet = this.roles.stream()
-                        .map(name -> {
-                            Role r = new Role();
-                            r.setName(name);
-                            return r;
-                        }).collect(Collectors.toSet());
-                user.setRoles(roleSet);
-            }
-            return user;
-        }
+    @GetMapping("/roles")
+    public List<String> getRoles() {
+        return userService.getAllRoles()
+                .stream()
+                .map(Role::getName)
+                .collect(Collectors.toList());
     }
+
+    // ---------------- DTO MAP ----------------
+
+    private UserDTO toDTO(User u) {
+        UserDTO dto = new UserDTO();
+        dto.setId(u.getId());
+        dto.setUsername(u.getUsername());
+        dto.setEmail(u.getEmail());
+        dto.setAge(u.getAge());
+        dto.setRoles(u.getRoles().stream()
+                .map(Role::getName)
+                .map(r -> r.replace("ROLE_", ""))
+                .collect(Collectors.toList()));
+        return dto;
+    }
+
+    private User fromDTO(UserDTO dto) {
+
+        User u = new User();
+        u.setId(dto.getId());
+        u.setUsername(dto.getUsername());
+        u.setEmail(dto.getEmail());
+        u.setAge(dto.getAge());
+
+        if (dto.getRoles() != null) {
+            u.setRoles(dto.getRoles().stream()
+                    .map(r -> {
+
+                        // ЕСЛИ роль уже начинается с ROLE_, НЕ добавляем префикс !!!
+                        String dbRoleName = r.startsWith("ROLE_") ? r : "ROLE_" + r;
+
+                        return userService.findRoleByName(dbRoleName)
+                                .orElseThrow(() -> new RuntimeException("Role not found: " + dbRoleName));
+                    })
+                    .collect(Collectors.toSet()));
+        }
+
+        if (dto.getPassword() != null && !dto.getPassword().isEmpty()) {
+            u.setPassword(dto.getPassword());
+        }
+
+        return u;
+    }
+
 }
