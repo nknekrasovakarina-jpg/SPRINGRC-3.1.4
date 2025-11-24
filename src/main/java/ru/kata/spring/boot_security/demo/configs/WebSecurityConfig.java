@@ -45,7 +45,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
                 .formLogin()
                 .loginPage("/login")      // страница логина
                 .loginProcessingUrl("/process_login")  // форма отправляет сюда
-                .defaultSuccessUrl("/admin", true)     // после логина → /admin
+                .successHandler(successUserHandler)     // после логина → /admin
                 .failureUrl("/login?error")            // неверный логин/пароль
                 .permitAll()
                 .and()
